@@ -1,0 +1,288 @@
+<html><head><base href="https://websim.io/lost-in-maze/"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Lost in Maze - Infinite Levels</title><style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: 'Orbitron', sans-serif;
+    background-color: #0c0c0c;
+    color: #fff;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+#game-container {
+    position: relative;
+    width: 800px;
+    height: 400px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
+    border-radius: 20px;
+    box-shadow: 0 0 50px rgba(0, 255, 0, 0.2);
+    padding: 20px;
+}
+#maze-container {
+    position: relative;
+    width: 350px;
+    height: 350px;
+}
+#maze {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+#info-panel {
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+}
+#controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 150px;
+}
+button {
+    padding: 10px;
+    font-size: 18px;
+    font-family: 'Orbitron', sans-serif;
+    cursor: pointer;
+    background-color: rgba(0, 255, 0, 0.2);
+    color: #00ff00;
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    transition: all 0.3s;
+    text-shadow: 0 0 5px #00ff00;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+button:hover {
+    background-color: rgba(0, 255, 0, 0.4);
+    box-shadow: 0 0 15px #00ff00;
+}
+#game-over {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-size: 28px;
+    display: none;
+    border-radius: 20px;
+}
+#timer {
+    color: #ff4136;
+    text-shadow: 0 0 10px #ff4136;
+}
+.glow {
+    text-shadow: 0 0 10px #00ff00;
+}
+#restart {
+    width: auto;
+    height: auto;
+    padding: 15px 20px;
+}
+</style></head><body>
+<div id="game-container">
+    <div id="maze-container">
+        <canvas id="maze" width="350" height="350"></canvas>
+    </div>
+    <div id="info-panel">
+        <div class="glow">Level: <span id="level">1</span></div>
+        <div>Time: <span id="timer">02:00</span></div>
+        <div id="controls">
+            <button id="left">←</button>
+            <button id="up">↑</button>
+            <button id="down">↓</button>
+            <button id="right">→</button>
+        </div>
+    </div>
+    <div id="game-over">
+        <h1 class="glow">Game Over!</h1>
+        <p>You reached level <span id="final-level" class="glow"></span></p>
+        <button id="restart">Restart Game</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('maze');
+const ctx = canvas.getContext('2d');
+const levelSpan = document.getElementById('level');
+const timerSpan = document.getElementById('timer');
+const gameOverScreen = document.getElementById('game-over');
+const finalLevelSpan = document.getElementById('final-level');
+
+let level = 1;
+let playerX = 0;
+let playerY = 0;
+let exitX = 0;
+let exitY = 0;
+let maze = [];
+let startTime;
+let timerInterval;
+let remainingTime = 120; // 2 minutes in seconds
+
+function generateMaze(size) {
+    maze = Array(size).fill().map(() => Array(size).fill(1));
+    const stack = [[1, 1]];
+    maze[1][1] = 0;
+
+    while (stack.length > 0) {
+        const [x, y] = stack.pop();
+        const directions = [[0, -2], [2, 0], [0, 2], [-2, 0]].sort(() => Math.random() - 0.5);
+
+        for (let [dx, dy] of directions) {
+            const nx = x + dx;
+            const ny = y + dy;
+
+            if (nx > 0 && ny > 0 && nx < size - 1 && ny < size - 1 && maze[ny][nx] === 1) {
+                maze[y + dy/2][x + dx/2] = 0;
+                maze[ny][nx] = 0;
+                stack.push([nx, ny]);
+            }
+        }
+    }
+
+    do {
+        exitX = Math.floor(Math.random() * (size - 2)) + 1;
+        exitY = Math.floor(Math.random() * (size - 2)) + 1;
+    } while (maze[exitY][exitX] !== 0 || (exitX === 1 && exitY === 1));
+
+    playerX = 1;
+    playerY = 1;
+    maze[playerY][playerX] = 0;
+}
+
+function drawMaze() {
+    const cellSize = canvas.width / maze.length;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw background
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw maze walls
+    ctx.fillStyle = '#00ff00';
+    for (let y = 0; y < maze.length; y++) {
+        for (let x = 0; x < maze.length; x++) {
+            if (maze[y][x] === 1) {
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+            }
+        }
+    }
+
+    // Draw player
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc((playerX + 0.5) * cellSize, (playerY + 0.5) * cellSize, cellSize / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw player glow
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc((playerX + 0.5) * cellSize, (playerY + 0.5) * cellSize, cellSize / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Draw exit
+    ctx.fillStyle = '#ff4136';
+    ctx.beginPath();
+    ctx.arc((exitX + 0.5) * cellSize, (exitY + 0.5) * cellSize, cellSize / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw exit glow
+    ctx.shadowColor = '#ff4136';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc((exitX + 0.5) * cellSize, (exitY + 0.5) * cellSize, cellSize / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+function movePlayer(dx, dy) {
+    const newX = playerX + dx;
+    const newY = playerY + dy;
+
+    if (newX > 0 && newY > 0 && newX < maze.length - 1 && newY < maze.length - 1 && maze[newY][newX] === 0) {
+        playerX = newX;
+        playerY = newY;
+        drawMaze();
+
+        if (playerX === exitX && playerY === exitY) {
+            level++;
+            levelSpan.textContent = level;
+            clearInterval(timerInterval);
+            startNewLevel();
+        }
+    }
+}
+
+function updateTimer() {
+    remainingTime--;
+    const minutes = Math.floor(remainingTime / 60).toString().padStart(2, '0');
+    const seconds = (remainingTime % 60).toString().padStart(2, '0');
+    timerSpan.textContent = `${minutes}:${seconds}`;
+
+    if (remainingTime <= 0) {
+        gameOver();
+    }
+}
+
+function startNewLevel() {
+    generateMaze(Math.min(21, 5 + level));
+    drawMaze();
+    remainingTime = 120; // Reset timer to 2 minutes
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(updateTimer, 1000);
+}
+
+function gameOver() {
+    clearInterval(timerInterval);
+    gameOverScreen.style.display = 'flex';
+    finalLevelSpan.textContent = level;
+}
+
+function restartGame() {
+    level = 1;
+    levelSpan.textContent = level;
+    gameOverScreen.style.display = 'none';
+    startNewLevel();
+}
+
+document.getElementById('up').addEventListener('click', () => movePlayer(0, -1));
+document.getElementById('down').addEventListener('click', () => movePlayer(0, 1));
+document.getElementById('left').addEventListener('click', () => movePlayer(-1, 0));
+document.getElementById('right').addEventListener('click', () => movePlayer(1, 0));
+document.getElementById('restart').addEventListener('click', restartGame);
+
+document.addEventListener('keydown', (e) => {
+    switch(e.key) {
+        case 'ArrowUp': movePlayer(0, -1); break;
+        case 'ArrowDown': movePlayer(0, 1); break;
+        case 'ArrowLeft': movePlayer(-1, 0); break;
+        case 'ArrowRight': movePlayer(1, 0); break;
+    }
+});
+
+startNewLevel();
+</script>
+</body></html>
